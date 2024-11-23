@@ -61,222 +61,61 @@ class IntakeProcessor:
         context.add_message(
             {
                 "role": "system",
-                "content": "You are Jessica, an agent for a company called Tri-County Health Services. Your job is to collect important information from the user before their doctor visit. You're talking to Chad Bailey. You should address the user by their first name and be polite and professional. You're not a medical professional, so you shouldn't provide any advice. Keep your responses short. Your job is to collect information to give to a doctor. Don't make assumptions about what values to plug into functions. Ask for clarification if a user response is ambiguous. Start by introducing yourself. Then, ask the user to confirm their identity by telling you their birthday, including the year. When they answer with their birthday, call the verify_birthday function.",
+                "content": """Sie sind Sprechstundenhilfe in der Praxis Dr. Pfeiffer in Wiesbaden. Die Öffnungszeiten sind täglich von 8:00 bis 17:00 Uhr, aber sonntags ist geschlossen.
+Die Praxis Dr. Pfeiffer in Wiesbaden ist eine Hausarzt Praxis. Wir betreuen sie umfassend hausärztlich. Als Praxis für Allgemeinmedizin und allgemeine Innere Medizin sind wir Ihr erster Ansprechpartner für akute Erkrankungen sowie bei der Betreuung von Patienten mit chronischen Leiden. Selbstverständlich machen wir auch Hausbesuche und kümmern uns um Patienten in Senioren- und Pflegeheimen.
+Oft begleiten wir unsere Patienten und ihre Familien mit ihren körperlichen, seelischen und sozialen Aspekten über viele Jahre hinweg. Es ist uns wichtig, Sie kontinuierlich und umfassend zu betreuen, denn so können wir Veränderungen frühzeitig erkennen und krankhaften Entwicklungen entgegenwirken.Das Ärzteteam besteht aus Dr. Pfeiffer, Dr. Hoffmann und Dr. Schmidt.
+Es gibt immer eine Akutsprechstunde von 8 bis 10 Uhr. In dieser Zeit können keine Termine vergeben werden, sondern nur akute Notfälle versorgt werden.
+
+Begrüßen Sie den Anrufer freundlich und fragen Sie nach dem Grund des Anrufs. Hören Sie aufmerksam zu und notieren Sie sich die wichtigsten Informationen.""",
             }
         )
-        context.set_tools(
-            [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "verify_birthday",
-                        "description": "Use this function to verify the user has provided their correct birthday.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "birthday": {
-                                    "type": "string",
-                                    "description": "The user's birthdate, including the year. The user can provide it in any format, but convert it to YYYY-MM-DD format to call this function.",
-                                }
+        context.set_tools([
+            {
+                "type": "function",
+                "function": {
+                    "name": "save_visit_reason",
+                    "description": "Save the reason for the visit",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "reason": {
+                                "type": "string",
+                                "description": "The reason for the visit"
                             },
+                            "is_emergency": {
+                                "type": "boolean",
+                                "description": "Whether this is an emergency case"
+                            }
                         },
-                    },
+                        "required": ["reason", "is_emergency"]
+                    }
                 }
-            ]
-        )
+            }
+        ])
 
-    async def verify_birthday(
-        self, function_name, tool_call_id, args, llm, context, result_callback
-    ):
-        if args["birthday"] == "1983-01-01":
-            context.set_tools(
-                [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "list_prescriptions",
-                            "description": "Once the user has provided a list of their prescription medications, call this function.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "prescriptions": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "medication": {
-                                                    "type": "string",
-                                                    "description": "The medication's name",
-                                                },
-                                                "dosage": {
-                                                    "type": "string",
-                                                    "description": "The prescription's dosage",
-                                                },
-                                            },
-                                        },
-                                    }
-                                },
-                            },
-                        },
-                    }
-                ]
-            )
-            # It's a bit weird to push this to the LLM, but it gets it into the pipeline
-            # await llm.push_frame(sounds["ding2.wav"], FrameDirection.DOWNSTREAM)
-            # We don't need the function call in the context, so just return a new
-            # system message and let the framework re-prompt
-            await result_callback(
-                [
-                    {
-                        "role": "system",
-                        "content": "Next, thank the user for confirming their identity, then ask the user to list their current prescriptions. Each prescription needs to have a medication name and a dosage. Do not call the list_prescriptions function with any unknown dosages.",
-                    }
-                ]
-            )
+    async def save_visit_reason(self, function_name, tool_call_id, args, llm, context, result_callback):
+        reason = args.get("reason", "")
+        is_emergency = args.get("is_emergency", False)
+        
+        logger.info(f"Visit reason: {reason}, Emergency: {is_emergency}")
+        
+        # Add appropriate response based on whether it's an emergency
+        if is_emergency:
+            response = """Ich verstehe, dass es sich um einen Notfall handelt. Bitte kommen Sie sofort in die Akutsprechstunde zwischen 8:00 und 10:00 Uhr. 
+            Falls es außerhalb dieser Zeiten ist und Sie dringende medizinische Hilfe benötigen, wenden Sie sich bitte an den ärztlichen Bereitschaftsdienst unter 116117."""
         else:
-            # The user provided an incorrect birthday; ask them to try again
-            await result_callback(
-                [
-                    {
-                        "role": "system",
-                        "content": "The user provided an incorrect birthday. Ask them for their birthday again. When they answer, call the verify_birthday function.",
-                    }
-                ]
-            )
+            response = """Vielen Dank für diese Information. Ich habe mir den Grund Ihres Besuchs notiert. 
+            Wir werden uns darum kümmern, einen passenden Termin für Sie zu finden."""
 
-    async def start_prescriptions(self, function_name, llm, context):
-        print(f"!!! doing start prescriptions")
-        # Move on to allergies
-        context.set_tools(
-            [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "list_allergies",
-                        "description": "Once the user has provided a list of their allergies, call this function.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "allergies": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {
-                                                "type": "string",
-                                                "description": "What the user is allergic to",
-                                            }
-                                        },
-                                    },
-                                }
-                            },
-                        },
-                    },
-                }
-            ]
-        )
-        context.add_message(
-            {
-                "role": "system",
-                "content": "Next, ask the user if they have any allergies. Once they have listed their allergies or confirmed they don't have any, call the list_allergies function.",
-            }
-        )
-        print(f"!!! about to await llm process frame in start prescrpitions")
-        await llm.queue_frame(OpenAILLMContextFrame(context), FrameDirection.DOWNSTREAM)
-        print(f"!!! past await process frame in start prescriptions")
-
-    async def start_allergies(self, function_name, llm, context):
-        print("!!! doing start allergies")
-        # Move on to conditions
-        context.set_tools(
-            [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "list_conditions",
-                        "description": "Once the user has provided a list of their medical conditions, call this function.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "conditions": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {
-                                                "type": "string",
-                                                "description": "The user's medical condition",
-                                            }
-                                        },
-                                    },
-                                }
-                            },
-                        },
-                    },
-                },
-            ]
-        )
-        context.add_message(
-            {
-                "role": "system",
-                "content": "Now ask the user if they have any medical conditions the doctor should know about. Once they've answered the question, call the list_conditions function.",
-            }
-        )
-        await llm.queue_frame(OpenAILLMContextFrame(context), FrameDirection.DOWNSTREAM)
-
-    async def start_conditions(self, function_name, llm, context):
-        print("!!! doing start conditions")
-        # Move on to visit reasons
-        context.set_tools(
-            [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "list_visit_reasons",
-                        "description": "Once the user has provided a list of the reasons they are visiting a doctor today, call this function.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "visit_reasons": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {
-                                                "type": "string",
-                                                "description": "The user's reason for visiting the doctor",
-                                            }
-                                        },
-                                    },
-                                }
-                            },
-                        },
-                    },
-                }
-            ]
-        )
-        context.add_message(
-            {
-                "role": "system",
-                "content": "Finally, ask the user the reason for their doctor visit today. Once they answer, call the list_visit_reasons function.",
-            }
-        )
-        await llm.queue_frame(OpenAILLMContextFrame(context), FrameDirection.DOWNSTREAM)
-
-    async def start_visit_reasons(self, function_name, llm, context):
-        print("!!! doing start visit reasons")
-        # move to finish call
+        context.add_message({"role": "assistant", "content": response})
+        await result_callback(None)
+        
+        # End the conversation
         context.set_tools([])
         context.add_message(
-            {"role": "system", "content": "Now, thank the user and end the conversation."}
+            {"role": "system", "content": "Danken Sie dem Benutzer und beenden Sie das Gespräch höflich."}
         )
         await llm.queue_frame(OpenAILLMContextFrame(context), FrameDirection.DOWNSTREAM)
-
-    async def save_data(self, function_name, tool_call_id, args, llm, context, result_callback):
-        logger.info(f"!!! Saving data: {args}")
-        # Since this is supposed to be "async", returning None from the callback
-        # will prevent adding anything to context or re-prompting
-        await result_callback(None)
 
 
 async def main():
@@ -305,7 +144,7 @@ async def main():
 
         tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id="79a125e8-cd45-4c13-8a67-188112f4dd22",  # British Lady
+            voice_id="fb9fcab6-aba5-49ec-8d7e-3f1100296dde",  # Friendly German Man
         )
 
         # tts = CartesiaTTSService(
@@ -320,18 +159,9 @@ async def main():
         context_aggregator = llm.create_context_aggregator(context)
 
         intake = IntakeProcessor(context)
-        llm.register_function("verify_birthday", intake.verify_birthday)
         llm.register_function(
-            "list_prescriptions", intake.save_data, start_callback=intake.start_prescriptions
-        )
-        llm.register_function(
-            "list_allergies", intake.save_data, start_callback=intake.start_allergies
-        )
-        llm.register_function(
-            "list_conditions", intake.save_data, start_callback=intake.start_conditions
-        )
-        llm.register_function(
-            "list_visit_reasons", intake.save_data, start_callback=intake.start_visit_reasons
+            "save_visit_reason", 
+            intake.save_visit_reason
         )
 
         fl = FrameLogger("LLM Output")

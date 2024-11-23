@@ -6,10 +6,20 @@
 
 import aiohttp
 import argparse
+from dotenv import load_dotenv
 import os
+import logging
+
+# Load environment variables from .env
+load_dotenv()
+
+# Access the DAILY_API_KEY
+api_key = os.getenv("DAILY_API_KEY")
+if not api_key:
+    raise ValueError("DAILY_API_KEY is missing. Check your .env file.")
+
 
 from pipecat.transports.services.helpers.daily_rest import DailyRESTHelper
-
 
 async def configure(aiohttp_session: aiohttp.ClientSession):
     parser = argparse.ArgumentParser(description="Daily AI SDK Bot Sample")
@@ -38,6 +48,8 @@ async def configure(aiohttp_session: aiohttp.ClientSession):
         raise Exception(
             "No Daily API key specified. use the -k/--apikey option from the command line, or set DAILY_API_KEY in your environment to specify a Daily API key, available from https://dashboard.daily.co/developers."
         )
+
+    logging.debug(f"Using API Key: {key}")
 
     daily_rest_helper = DailyRESTHelper(
         daily_api_key=key,
